@@ -83,8 +83,7 @@ class Z3Model(Model):
 
     def __contains__(self, x):
         """Returns whether the model contains a value for 'x'."""
-        z3_x = self.converter.convert(x)
-        return z3_x in self.z3_model.decls()
+        return x in (v for v, _ in self)
 
 
 

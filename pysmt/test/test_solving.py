@@ -150,7 +150,7 @@ class TestBasic(TestCase):
         for solver in get_env().factory.all_solvers(logic=QF_LRA):
             res = get_implicant(f, solver_name=solver)
             self.assertIsNotNone(res, "Formula was expected to be SAT")
-            self.assertTrue(is_valid(Implies(res, f)))
+            self.assertValid(Implies(res, f), logic=QF_LRA)
 
 
     @skipIfNoSolverForLogic(QF_BOOL)

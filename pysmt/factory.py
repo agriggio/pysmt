@@ -393,25 +393,29 @@ class Factory(object):
             return retval
 
     def get_implicant(self, formula, solver_name=None,
-                      logic=None, complete=False):
+                      logic=None):
         mgr = self.environment.formula_manager
-        model = self.get_model(formula, solver_name=solver_name, logic=logic)
-        if model is None:
-            return None
-        else:
-            def assignment_as_formula(var, val):
-                if val.is_true():
-                    return var
-                elif val.is_false():
-                    return mgr.Not(var)
-                else:
-                    return mgr.Equals(var, val)
+        if logic == AUTO_LOGIC:
+            logic = get_logic(formula, self.environment)
 
-            if complete:
-                return mgr.And(assignment_as_formula(x, model.get_value(x))
-                               for x in formula.get_free_variables())
+        with self.Solver(name=solver_name, logic=logic) \
+             as solver:
+            solver.add_assertion(formula)
+            check = solver.solve()
+            if not check:
+                return None
             else:
-                return mgr.And(assignment_as_formula(x, v) for x,v in model)
+                model = solver.get_model()
+                atoms = formula.get_atoms()
+                res = []
+                for a in atoms:
+                    fv = a.get_free_variables()
+                    if any(v in model for v in fv):
+                        if solver.get_value(a).is_true():
+                            res.append(a)
+                        else:
+                            res.append(mgr.Not(a))
+                return mgr.And(res)
 
     def get_unsat_core(self, clauses, solver_name=None, logic=None):
         if logic == AUTO_LOGIC:
