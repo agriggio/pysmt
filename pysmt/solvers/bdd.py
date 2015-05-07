@@ -55,15 +55,17 @@ class LockDdManager(object):
         LockDdManager._depth += 1
 
     def __exit__(self, type, value, traceback):
-        assert self.manager is not None
-        current_manager = pycudd.GetDefaultDdManager()
-        assert current_manager is not None
-        if not current_manager == self.manager:
-            warnings.warn("The default DdManager changed without a " \
-                          "context protecting it", stacklevel=2)
-        LockDdManager._depth -= 1
-        if LockDdManager._depth == 0:
-            pycudd.ResetDefaultDdManager()
+        try:
+            assert self.manager is not None
+            current_manager = pycudd.GetDefaultDdManager()
+            assert current_manager is not None
+            if not current_manager == self.manager:
+                warnings.warn("The default DdManager changed without a " \
+                              "context protecting it", stacklevel=2)
+        finally:
+            LockDdManager._depth -= 1
+            if LockDdManager._depth == 0:
+                pycudd.ResetDefaultDdManager()
 
 
 
