@@ -58,7 +58,6 @@ class LockDdManager(object):
         try:
             assert self.manager is not None
             current_manager = pycudd.GetDefaultDdManager()
-            assert current_manager is not None
             if not current_manager == self.manager:
                 warnings.warn("The default DdManager changed without a " \
                               "context protecting it", stacklevel=2)
