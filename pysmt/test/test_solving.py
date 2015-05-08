@@ -276,7 +276,7 @@ class TestBasic(TestCase):
     def test_examples_get_implicant(self):
         for (f, _, satisfiability, logic) in get_example_formulae():
             if logic.quantifier_free and \
-               (get_env().factory.all_solvers(logic=logic)) > 0:
+               (len(get_env().factory.all_solvers(logic=logic)) > 0):
                 f_i = get_implicant(f, logic=logic)
                 if satisfiability:
                     self.assertValid(Implies(f_i, f), logic=logic)
