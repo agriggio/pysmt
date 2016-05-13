@@ -28,7 +28,7 @@ from pysmt.operators import (FORALL, EXISTS, AND, OR, NOT, IMPLIES, IFF,
                              TOREAL,
                              BV_CONSTANT, BV_NOT, BV_AND, BV_OR, BV_XOR,
                              BV_CONCAT, BV_EXTRACT,
-                             BV_ULT, BV_NEG, BV_ADD, BV_SUB,
+                             BV_ULT, BV_ULE, BV_NEG, BV_ADD, BV_SUB,
                              BV_MUL, BV_UDIV, BV_UREM,
                              BV_LSHL, BV_LSHR,
                              BV_ROL, BV_ROR,
@@ -345,6 +345,10 @@ class FNode(object):
     def is_bv_ult(self):
         """Test whether the node is the BVULT (unsigned less than) relation."""
         return self.node_type() == BV_ULT
+
+    def is_bv_ule(self):
+        """Test whether the node is the BVULE (unsigned less than) relation."""
+        return self.node_type() == BV_ULE
 
     def is_bv_neg(self):
         """Test whether the node is the BVNeg operator."""

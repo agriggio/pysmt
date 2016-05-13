@@ -181,3 +181,9 @@ class IdentityDagWalker(DagWalker):
 
     def walk_bv_srem(self, formula, args, **kwargs):
         return self.mgr.BVSRem(args[0], args[1])
+
+    def walk_arr_select(self, formula, args, **kwargs):
+        return self.mgr.ArrSelect(args[0], args[1])
+
+    def walk_arr_store(self, formula, args, **kwargs):
+        return self.mgr.ArrStore(args[0], args[1], args[2])
