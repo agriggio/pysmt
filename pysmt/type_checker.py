@@ -184,6 +184,8 @@ class SimpleTypeChecker(walkers.DagWalker):
             return self.walk_type_to_type(formula, args, INT, BOOL)
         if args[0].is_bv_type():
             return self.walk_bv_to_bool(formula, args)
+        if args[0].is_array_type():
+            return self.walk_type_to_type(formula, args, args[0], BOOL)
         return None
 
     def walk_ite(self, formula, args, **kwargs):
