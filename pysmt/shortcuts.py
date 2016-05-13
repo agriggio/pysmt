@@ -379,6 +379,12 @@ def BVAShr(left, right):
         of steps specified by the right BV."""
     return get_env().formula_manager.BVAShr(left, right)
 
+# arrays
+def ArrSelect(arr, idx):
+    return get_env().formula_manager.ArrSelect(arr, idx)
+
+def ArrStore(arr, idx, elem):
+    return get_env().formula_manager.ArrStore(arr, idx, elem)
 
 
 

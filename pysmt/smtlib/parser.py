@@ -290,7 +290,11 @@ class SmtLibParser(object):
                             'bvslt':self._operator_adapter(mgr.BVSLT),
                             'bvsle':self._operator_adapter(mgr.BVSLE),
                             'bvsgt':self._operator_adapter(mgr.BVSGT),
-                            'bvsge':self._operator_adapter(mgr.BVSGE),}
+                            'bvsge':self._operator_adapter(mgr.BVSGE),
+                            # arrays
+                            'select':self._operator_adapter(mgr.ArrSelect),
+                            'store':self._operator_adapter(mgr.ArrStore),
+                            }
 
         # Command tokens
         self.commands = {smtcmd.ASSERT : self._cmd_assert,
@@ -437,6 +441,12 @@ class SmtLibParser(object):
         If params is specified, the type is interpreted as a function type.
         """
         if params is None or len(params) == 0:
+            if isinstance(type_name, tuple):
+                assert len(type_name) == 3
+                assert type_name[0] == "Array"
+                return ArrayType(self._get_basic_type(type_name[1]),
+                                 self._get_basic_type(type_name[2]))
+            
             if type_name == "Bool":
                 return BOOL
             elif type_name == "Int":
@@ -720,6 +730,13 @@ class SmtLibParser(object):
             var = next(tokens)
         if var == "(":
             op = next(tokens)
+
+            if op == "Array":
+                idxtype = self.parse_type(tokens, command)
+                elemtype = self.parse_type(tokens, command)
+                self.consume_closing(tokens, command)
+                return ("Array", idxtype, elemtype)
+            
             if op != "_":
                 raise SyntaxError("Unexpected token '%s' in %s command." % \
                                   (op, command))

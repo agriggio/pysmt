@@ -60,6 +60,8 @@ class SimpleTypeChecker(walkers.DagWalker):
         self.set_function(self.walk_bv_rotate, op.BV_ROL, op.BV_ROR)
         self.set_function(self.walk_bv_extend, op.BV_ZEXT, op.BV_SEXT)
         self.set_function(self.walk_bv_comp, op.BV_COMP)
+        self.set_function(self.walk_arr_select, op.ARR_SELECT)
+        self.set_function(self.walk_arr_store, op.ARR_STORE)
         self.be_nice = False
 
     def _get_key(self, formula, **kwargs):
@@ -242,6 +244,21 @@ class SimpleTypeChecker(walkers.DagWalker):
                 return None
 
         return tp.return_type
+
+    def walk_arr_select(self, formula, args, **kwargs):
+        assert formula is not None
+        if None in args: return None
+        if (args[0].is_array_type() and args[0].index_type==args[1]):
+            return args[0].elem_type
+        return None    
+
+    def walk_arr_store(self, formula, args, **kwargs):
+        assert formula is not None
+        if None in args: return None
+        if (args[0].is_array_type() and args[0].index_type==args[1] and
+            args[0].elem_type==args[2]):
+            return args[0]
+        return None    
 
 # EOC SimpleTypeChecker
 

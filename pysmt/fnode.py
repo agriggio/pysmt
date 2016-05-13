@@ -36,9 +36,10 @@ from pysmt.operators import (FORALL, EXISTS, AND, OR, NOT, IMPLIES, IFF,
                              BV_SLT, BV_SLE,
                              BV_COMP,
                              BV_SDIV, BV_SREM,
-                             BV_ASHR)
+                             BV_ASHR,
+                             ARR_SELECT, ARR_STORE)
 from pysmt.operators import  (BOOL_OPERATORS, THEORY_OPERATORS,
-                              BV_OPERATORS, LIRA_OPERATORS,
+                              BV_OPERATORS, LIRA_OPERATORS, ARR_OPERATORS,
                               RELATIONS, CONSTANTS)
 from pysmt.typing import BOOL, REAL, INT, BVType
 from pysmt.decorators import deprecated
@@ -313,6 +314,10 @@ class FNode(object):
         """Test whether the node is a BitVector operator."""
         return self.node_type() in BV_OPERATORS
 
+    def is_arr_op(self):
+        """Test whether the node is an array operator."""
+        return self.node_type() in ARR_OPERATORS
+
     def is_bv_not(self):
         """Test whether the node is the BVNot operator."""
         return self.node_type() == BV_NOT
@@ -412,6 +417,14 @@ class FNode(object):
     def is_bv_ashr(self):
         """Test whether the node is the BVAshr (arithmetic shift right) operator."""
         return self.node_type() == BV_ASHR
+
+    def is_arr_select(self):
+        """Test whether the node is the ARR_SELECT (array select) operator."""
+        return self.node_type() == ARR_SELECT
+
+    def is_arr_store(self):
+        """Test whether the node is the STORE (array store) operator."""
+        return self.node_type() == ARR_STORE
 
     def bv_width(self):
         """Return the BV width of the formula."""
