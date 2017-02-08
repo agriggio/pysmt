@@ -15,8 +15,9 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-import pysmt.operators as op
+from six.moves import xrange
 
+import pysmt.operators as op
 from pysmt.shortcuts import FreshSymbol, Symbol, Int, Bool, ForAll
 from pysmt.shortcuts import And, Or, Iff, Not, Function, Real
 from pysmt.shortcuts import LT, GT, Plus, Minus, Equals
@@ -26,9 +27,8 @@ from pysmt.walkers import TreeWalker, DagWalker, IdentityDagWalker
 from pysmt.test import TestCase, main
 from pysmt.formula import FormulaManager
 from pysmt.test.examples import get_example_formulae
-from pysmt.exceptions import UnsupportedOperatorError
-
-from six.moves import xrange
+from pysmt.exceptions import UnsupportedOperatorError, PysmtTypeError
+from pysmt.substituter import MSSubstituter
 
 
 class TestWalkers(TestCase):
@@ -61,7 +61,7 @@ class TestWalkers(TestCase):
         args_bad = {x:f}
 
         substitute(and_x_x, args_good)
-        with self.assertRaisesRegex(TypeError, " substitutions"):
+        with self.assertRaisesRegex(PysmtTypeError, " substitutions"):
             substitute(and_x_x, args_bad)
 
         # 2. All arguments belong to the manager of the substituter.
@@ -71,13 +71,13 @@ class TestWalkers(TestCase):
         args_1 = {x: new_x}
         args_2 = {new_x: new_x}
 
-        with self.assertRaisesRegex(TypeError, "Formula Manager" ):
+        with self.assertRaisesRegex(PysmtTypeError, "Formula Manager" ):
             substitute(and_x_x, args_1)
 
-        with self.assertRaisesRegex(TypeError, "Formula Manager."):
+        with self.assertRaisesRegex(PysmtTypeError, "Formula Manager."):
             substitute(and_x_x, args_2)
 
-        with self.assertRaisesRegex(TypeError, "substitute()"):
+        with self.assertRaisesRegex(PysmtTypeError, "substitute()"):
             substitute(f, {x:x})
 
     def test_undefined_node(self):
@@ -90,7 +90,6 @@ class TestWalkers(TestCase):
         tree_walker = TreeWalker()
         with self.assertRaises(UnsupportedOperatorError):
             tree_walker.walk(varA)
-
 
     def test_walker_is_complete(self):
         op.ALL_TYPES.append(-1)
@@ -145,21 +144,24 @@ class TestWalkers(TestCase):
 
     def test_substitution_complex(self):
         x, y = FreshSymbol(REAL), FreshSymbol(REAL)
-
         # y = 0 /\ (Forall x. x > 3 /\ y < 2)
         f = And(Equals(y, Real(0)),
                 ForAll([x], And(GT(x, Real(3)), LT(y, Real(2)))))
 
-        if "MSS" in str(self.env.SubstituterClass):
-            subs = {y: Real(0),
-                    ForAll([x], And(GT(x, Real(3)), LT(Real(0), Real(2)))): TRUE()}
-        else:
-            assert "MGS" in str(self.env.SubstituterClass)
-            subs = {y: Real(0),
-                    ForAll([x], And(GT(x, Real(3)), LT(y, Real(2)))): TRUE()}
+        subs = {y: Real(0),
+                ForAll([x], And(GT(x, Real(3)), LT(y, Real(2)))): TRUE()}
         f_subs = substitute(f, subs).simplify()
         self.assertEqual(f_subs, TRUE())
 
+    def test_substitution_complex_mss(self):
+        x, y = FreshSymbol(REAL), FreshSymbol(REAL)
+        # y = 0 /\ (Forall x. x > 3 /\ y < 2)
+        f = And(Equals(y, Real(0)),
+                ForAll([x], And(GT(x, Real(3)), LT(y, Real(2)))))
+        subs = {y: Real(0),
+                ForAll([x], And(GT(x, Real(3)), LT(Real(0), Real(2)))): TRUE()}
+        f_subs = MSSubstituter(env=self.env).substitute(f, subs).simplify()
+        self.assertEqual(f_subs, TRUE())
 
     def test_substitution_term(self):
         x, y = FreshSymbol(REAL), FreshSymbol(REAL)
@@ -172,7 +174,6 @@ class TestWalkers(TestCase):
         # Since 'x' is quantified, we cannot replace the term
         # therefore the substitution does not yield any result.
         self.assertEqual(f_subs, f)
-
 
     def test_substitution_on_functions(self):
         i, r = FreshSymbol(INT), FreshSymbol(REAL)
@@ -189,7 +190,6 @@ class TestWalkers(TestCase):
         phi_sub = substitute(phi, {r: Real(0), i: Int(0)}).simplify()
         self.assertEqual(phi_sub, Function(f, [Int(1), Real(-2)]))
 
-
     def test_iterative_get_free_variables(self):
         f = Symbol("x")
         for _ in xrange(1000):
@@ -197,6 +197,16 @@ class TestWalkers(TestCase):
 
         cone = f.get_free_variables()
         self.assertEqual(cone, set([Symbol("x")]))
+
+    def test_walk_error(self):
+        """All walk methods by default call walk_error."""
+        from pysmt.walkers import DagWalker
+
+        x = Symbol("x")
+        w = DagWalker()
+        for o in op.ALL_TYPES:
+            with self.assertRaises(UnsupportedOperatorError):
+                w.functions[o](x)
 
 
 if __name__ == '__main__':

@@ -31,7 +31,7 @@ from pysmt.solvers.smtlib import SmtLibBasicSolver, SmtLibIgnoreMixin
 from pysmt.solvers.eager import EagerModel
 from pysmt.walkers import DagWalker
 from pysmt.exceptions import (SolverReturnedUnknownResultError,
-                              ConvertExpressionError)
+                              ConvertExpressionError, PysmtValueError)
 from pysmt.decorators import clear_pending_pop, catch_conversion_error
 from pysmt.logics import QF_BV, QF_UFBV, QF_ABV, QF_AUFBV, QF_AX
 
@@ -40,7 +40,7 @@ class BoolectorOptions(SolverOptions):
     def __init__(self, **base_options):
         SolverOptions.__init__(self, **base_options)
         if self.random_seed is not None:
-            raise ValueError("BTOR Does not support Random Seed setting.")
+            raise PysmtValueError("BTOR Does not support Random Seed setting.")
 
         # Disabling Incremental usage is not allowed.
         # This needs to be set to 1
@@ -51,9 +51,11 @@ class BoolectorOptions(SolverOptions):
         try:
             btor.Set_opt(name, value)
         except TypeError:
-            raise ValueError("Error setting the option '%s=%s'" % (name,value))
+            raise PysmtValueError("Error setting the option '%s=%s'" \
+                                  % (name,value))
         except boolector.BoolectorException:
-            raise ValueError("Error setting the option '%s=%s'" % (name,value))
+            raise PysmtValueError("Error setting the option '%s=%s'" \
+                                  % (name,value))
 
     def __call__(self, solver):
         if self.generate_models:
@@ -88,6 +90,10 @@ class BoolectorSolver(IncrementalTrackingSolver,
         self.declarations = {}
         return
 
+# EOC BoolectorOptions
+
+        pass
+
     @clear_pending_pop
     def _reset_assertions(self):
         raise NotImplementedError
@@ -111,10 +117,8 @@ class BoolectorSolver(IncrementalTrackingSolver,
     @clear_pending_pop
     def _solve(self, assumptions=None):
         if assumptions is not None:
-            assumption = self.mgr.And(assumptions)
-            self._assert_is_boolean(assumption)
-            btor_assumption =  self.converter.convert(assumption)
-            self.btor.Assume(btor_assumption)
+            btor_assumptions = [self.converter.convert(a) for a in assumptions]
+            self.btor.Assume(*btor_assumptions)
 
         res = self.btor.Sat()
         if res == self.btor.SAT:

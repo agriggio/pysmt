@@ -15,74 +15,12 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-import abc
-
-from pysmt.typing import BOOL
-from pysmt.exceptions import SolverReturnedUnknownResultError
 from six.moves import xrange
 
-
-class SolverOptions(object):
-    """Solver Options shared by most solvers.
-
-    * generate_models : True, False
-      Enable model generation. Needed for get_value, get_model etc.
-
-    * incremental: True, False
-      Enable incremental interface (push, pop)
-
-    * unsat_cores_mode: None, "named", "all"
-      Enable UNSAT core extraction using "named" or "all" strategy.
-
-    * random_seed: None, integer
-      Sets the random seed for the solver
-
-    * solver_options: dictionary
-      Provides solver specific options
-
-    """
-    __metaclass__ = abc.ABCMeta
-
-    def __init__(self, generate_models=True, incremental=True,
-                 unsat_cores_mode=None, random_seed=None,
-                 solver_options=None):
-
-        if generate_models not in (True, False):
-            raise ValueError("Invalid value %s for 'generate_models'" \
-                             % generate_models)
-        self.generate_models = generate_models
-
-        if incremental not in (True, False):
-            raise ValueError("Invalid value %s for 'incremental'" \
-                             % incremental)
-        self.incremental = incremental
-
-        if unsat_cores_mode not in (None, "named", "all"):
-            raise ValueError("Invalid value %s for 'unsat_cores_mode'" \
-                             % unsat_cores_mode)
-        self.unsat_cores_mode = unsat_cores_mode
-
-        if random_seed is not None and type(random_seed) != int:
-            raise ValueError("Invalid value %s for 'random_seed'" \
-                             % random_seed)
-        self.random_seed = random_seed
-
-        if solver_options is not None:
-            try:
-                solver_options = dict(solver_options)
-            except:
-                raise ValueError("Invalid value %s for 'solver_options'" \
-                                 % solver_options)
-        else:
-            solver_options = dict()
-        self.solver_options = solver_options
-
-    @abc.abstractmethod
-    def __call__(self, solver):
-        """Handle the setting options within solver"""
-        raise NotImplementedError
-
-# EOC SolverOptions
+from pysmt.typing import BOOL
+from pysmt.solvers.options import SolverOptions
+from pysmt.exceptions import (SolverReturnedUnknownResultError, PysmtValueError,
+                              PysmtTypeError, SolverStatusError)
 
 
 class Solver(object):
@@ -96,7 +34,7 @@ class Solver(object):
 
     def __init__(self, environment, logic, **options):
         if logic is None:
-            raise ValueError("Cannot provide 'None' as logic")
+            raise PysmtValueError("Cannot provide 'None' as logic")
 
         self.environment = environment
         self.pending_pop = False
@@ -104,6 +42,46 @@ class Solver(object):
         self.options = self.OptionsClass(**options)
         self._destroyed = False
         return
+
+    def solve(self, assumptions=None):
+        """Returns the satisfiability value of the asserted formulas.
+
+        Assumptions is a list of Boolean variables or negations of
+        boolean variables. If assumptions is specified, the
+        satisfiability result is computed assuming that all the
+        specified literals are True.
+
+        A call to solve([a1, ..., an]) is functionally equivalent to::
+
+          push()
+          add_assertion(And(a1, ..., an))
+          res = solve()
+          pop()
+          return res
+
+        but is in general more efficient.
+
+        Other convenience methods (is_sat, is_unsat, is_valid) are
+        wrappers around this function.
+
+        :returns: Whether the assertion stack is satisfiable
+                  w.r.t. the given assumptions (if given)
+        :rtype: bool
+        """
+        raise NotImplementedError
+
+    def get_model(self):
+        """Returns an instance of Model that survives the solver instance.
+
+        Restrictions: Requires option generate_models to be set to
+                      true (default) and can be called only after
+                      :py:func:`solve` (or one of the derived methods)
+                      returned sat or unknown, if no change to the
+                      assertion set occurred.
+
+        """
+        raise NotImplementedError
+
 
     def is_sat(self, formula):
         """Checks satisfiability of the formula w.r.t. the current state of
@@ -119,9 +97,15 @@ class Solver(object):
                "Formula does not belong to the current Formula Manager"
 
         if not self.options.incremental:
-            # If not incremental, we only need to assert and solve
+            # If not incremental, we only need to assert and solve.
             self.add_assertion(formula)
-            return self.solve()
+            # We do not allow two calls to solve()
+            def solve_error(*args, **kwargs):
+                raise SolverStatusError("Cannot call is_sat twice when incrementality is disable")
+            res = self.solve()
+            self.solve = solve_error
+            self.is_sat = solve_error
+            return res
 
         # Try to be incremental using push/pop but fallback to
         # solving under assumption if push/pop is not implemented
@@ -168,10 +152,10 @@ class Solver(object):
     def get_values(self, formulae):
         """Returns the value of the expressions if a model was found.
 
-        Restrictions: Requires option generate_models to be set to
-                      true and can be called only after
-                      :py:func:`solve` returned sat or unknown, if
-                      no change to the assertion set occurred.
+        Requires option generate_models to be set to true (default)
+        and can be called only after :py:func:`solve` (or to one of
+        the derived methods) returned sat or unknown, if no change to
+        the assertion set occurred.
 
         :type formulae: Iterable of FNodes
         :returns: A dictionary associating to each expr a value
@@ -212,17 +196,9 @@ class Solver(object):
         """Removes all defined assertions."""
         raise NotImplementedError
 
-    def declare_variable(self, var):
-        """Declare a variable in the solver.
-
-        :type var: FNode
-        """
-        raise NotImplementedError
-
     def add_assertion(self, formula, named=None):
         """Add assertion to the solver."""
         raise NotImplementedError
-
 
     def solve(self, assumptions=None):
         """Returns the satisfiability value of the asserted formulas.
@@ -280,18 +256,6 @@ class Solver(object):
             res[f] = v
         return res
 
-    def get_model(self):
-        """Returns an instance of Model that survives the solver instance."""
-        raise NotImplementedError
-
-    def set_options(self, options):
-        """Sets multiple options at once.
-
-        :param options: Options to be set
-        :type options: Dictionary
-        """
-        raise NotImplementedError
-
     def __enter__(self):
         """Manages entering a Context (i.e., with statement)"""
         return self
@@ -310,7 +274,7 @@ class Solver(object):
         Raises TypeError.
         """
         if item.is_symbol() and item.symbol_type().is_function_type():
-            raise TypeError("Cannot call get_value() on a FunctionType")
+            raise PysmtTypeError("Cannot call get_value() on a FunctionType")
 
     def _assert_is_boolean(self, formula):
         """Enforces that argument 'formula' is of type Boolean.
@@ -318,7 +282,7 @@ class Solver(object):
         Raises TypeError.
         """
         if formula.get_type() != BOOL:
-            raise TypeError("Argument must be boolean.")
+            raise PysmtTypeError("Argument must be boolean.")
 
 
 class IncrementalTrackingSolver(Solver):

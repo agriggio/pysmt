@@ -17,6 +17,7 @@ from six.moves import input
 import os
 import argparse
 import sys
+import platform
 
 from collections import namedtuple
 
@@ -25,6 +26,7 @@ from pysmt.cmd.installers import CVC4Installer, YicesInstaller, BtorInstaller
 from pysmt.cmd.installers import CuddInstaller
 
 from pysmt.environment import get_env
+from pysmt.exceptions import PysmtException
 from pysmt import git_version
 
 # Build a list of installers, one for each solver
@@ -72,7 +74,7 @@ def check_installed(required_solvers, install_dir, bindings_dir, mirror_link):
     pypath_solvers = get_env().factory.all_solvers()
     for solver in required_solvers:
         if solver not in pypath_solvers:
-            raise Exception("Was expecting to find %s installed" % solver)
+            raise PysmtException("Was expecting to find %s installed" % solver)
 
     #
     # Output information
@@ -132,12 +134,14 @@ def parse_options():
                         action='store_true', default=False,
                         help='Confirm that you agree with the licenses of the\
                         solvers and skip the interactive question')
-
+    
+    install_path_default = os.path.join("~", ".smt_solvers")
     parser.add_argument('--install-path', dest='install_path',
-                        type=str, default="~/.smt_solvers",
+                        type=str, default=install_path_default,
                         help='The folder to use for the installation')
 
-    py_bindings = "~/.smt_solvers/python-bindings-%d.%d" % sys.version_info[0:2]
+    py_bindings = os.path.join(install_path_default, 
+                               "python-bindings-%d.%d" % sys.version_info[0:2])
     parser.add_argument('--bindings-path', dest='bindings_path',
                         type=str, default=py_bindings,
                         help='The folder to use for the bindings')
@@ -213,7 +217,10 @@ def main():
 
     elif options.env:
         bindings_dir= os.path.expanduser(options.bindings_path)
-        print("export PYTHONPATH=\""+ bindings_dir + ":${PYTHONPATH}\"")
+        if platform.system().lower() == "windows":
+            print("set PYTHONPATH=" + bindings_dir + ";%PYTHONPATH%")
+        else:
+            print("export PYTHONPATH=\"" + bindings_dir + ":${PYTHONPATH}\"")
 
     else:
         if len(solvers_to_install) == 0:

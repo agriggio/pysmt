@@ -42,7 +42,7 @@ from pysmt.exceptions import (SolverReturnedUnknownResultError,
                               SolverNotConfiguredForUnsatCoresError,
                               SolverStatusError,
                               ConvertExpressionError,
-                              UndefinedSymbolError)
+                              UndefinedSymbolError, PysmtValueError)
 from pysmt.decorators import clear_pending_pop, catch_conversion_error
 from pysmt.logics import LRA, LIA, QF_UFLIA, QF_UFLRA, PYSMT_LOGICS
 from pysmt.oracles import get_logic
@@ -113,7 +113,8 @@ class Z3Options(SolverOptions):
         try:
             z3solver.set(name, value)
         except z3.Z3Exception:
-            raise ValueError("Error setting the option '%s=%s'" % (name, value))
+            raise PysmtValueError("Error setting the option '%s=%s'" \
+                                  % (name, value))
 
     def __call__(self, solver):
         self._set_option(solver.z3, 'model', self.generate_models)
@@ -122,11 +123,11 @@ class Z3Options(SolverOptions):
             self._set_option(solver.z3, 'unsat_core', True)
         if self.random_seed is not None:
             self._set_option(solver.z3, 'random_seed', self.random_seed)
-        for k,v in self.solver_options:
+        for k,v in self.solver_options.items():
             try:
                 self._set_option(solver.z3, str(k), v)
             except z3.Z3Exception:
-                raise ValueError("Error setting the option '%s=%s'" % (k,v))
+                raise PysmtValueError("Error setting the option '%s=%s'" % (k,v))
 
 # EOC Z3Options
 
@@ -158,8 +159,7 @@ class Z3Solver(IncrementalTrackingSolver, UnsatCoreSolver,
 
     @clear_pending_pop
     def declare_variable(self, var):
-        self.declarations.add(var)
-        return
+        raise NotImplementedError
 
     @clear_pending_pop
     def _add_assertion(self, formula, named=None):
@@ -881,9 +881,9 @@ class Z3QuantifierEliminator(QuantifierEliminator):
     def eliminate_quantifiers(self, formula):
         logic = get_logic(formula, self.environment)
         if not logic <= LRA and not logic <= LIA:
-            raise NotImplementedError("Z3 quantifier elimination only "\
-                                      "supports LRA or LIA without combination."\
-                                      "(detected logic is: %s)" % str(logic))
+            raise PysmtValueError("Z3 quantifier elimination only "\
+                                  "supports LRA or LIA without combination."\
+                                  "(detected logic is: %s)" % str(logic))
 
         simplifier = z3.Tactic('simplify')
         eliminator = z3.Tactic('qe')
@@ -929,9 +929,8 @@ class Z3Interpolator(Interpolator):
             logic = get_logic(f, self.environment)
             ok = any(logic <= l for l in self.LOGICS)
             if not ok:
-                raise NotImplementedError(
-                    "Logic not supported by Z3 interpolation."
-                    "(detected logic is: %s)" % str(logic))
+                raise PysmtValueError("Logic not supported by Z3 interpolation."
+                                      "(detected logic is: %s)" % str(logic))
 
     def binary_interpolant(self, a, b):
         self._check_logic([a, b])

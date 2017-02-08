@@ -25,6 +25,10 @@ from pysmt.smtlib.script import SmtLibScript, SmtLibCommand
 from pysmt.smtlib.script import smtlibscript_from_formula, evaluate_command
 from pysmt.smtlib.parser import get_formula_strict, get_formula, SmtLibParser
 from pysmt.solvers.smtlib import SmtLibIgnoreMixin
+from pysmt.logics import QF_UFLIRA
+from pysmt.exceptions import UndefinedLogicError, PysmtValueError
+
+
 
 class TestSmtLibScript(TestCase):
 
@@ -65,6 +69,24 @@ class TestSmtLibScript(TestCase):
         self.assertIn("(declare-fun y () Bool)", output)
         self.assertIn("(check-sat)", output)
 
+        # Use custom logic (as str)
+        script2 = smtlibscript_from_formula(f, logic="BOOL")
+        outstream = cStringIO()
+        script2.serialize(outstream)
+        output = outstream.getvalue()
+        self.assertIn("(set-logic BOOL)", output)
+
+        # Use custom logic (as Logic obj)
+        script3 = smtlibscript_from_formula(f, logic=QF_UFLIRA)
+        outstream = cStringIO()
+        script3.serialize(outstream)
+        output = outstream.getvalue()
+        self.assertIn("(set-logic QF_UFLIRA)", output)
+
+        # Custom logic must be a Logic or Str
+        with self.assertRaises(UndefinedLogicError):
+            smtlibscript_from_formula(f, logic=4)
+
 
     def test_get_strict_formula(self):
 
@@ -96,7 +118,7 @@ class TestSmtLibScript(TestCase):
         self.assertEqual(f, target_two)
 
         stream_in = cStringIO(smtlib_double)
-        with self.assertRaises(AssertionError):
+        with self.assertRaises(PysmtValueError):
             f = get_formula_strict(stream_in)
 
 
@@ -125,6 +147,33 @@ class TestSmtLibScript(TestCase):
                                        [None, None, None, None]),
                          solver=mock)
 
+
+    def test_smtlibignore_mixin(self):
+        """In SmtLibIgnoreMixin, all SMT-LIB methods return None."""
+        class SmtLibIgnore(SmtLibIgnoreMixin):
+            pass
+
+        solver = SmtLibIgnore()
+        self.assertIsNone(solver.set_logic(None))
+        self.assertIsNone(solver.declare_fun(None))
+        self.assertIsNone(solver.declare_const(None))
+        self.assertIsNone(solver.define_fun(None, None, None, None))
+        self.assertIsNone(solver.declare_sort(None, None))
+        self.assertIsNone(solver.define_sort(None, None, None))
+        self.assertIsNone(solver.assert_(None))
+        self.assertIsNone(solver.get_assertions())
+        self.assertIsNone(solver.check_sat())
+        self.assertIsNone(solver.get_proof())
+        self.assertIsNone(solver.get_unsat_core())
+        self.assertIsNone(solver.get_values(None))
+        self.assertIsNone(solver.get_assignment())
+        self.assertIsNone(solver.push())
+        self.assertIsNone(solver.pop())
+        self.assertIsNone(solver.get_option(None))
+        self.assertIsNone(solver.set_option(None, None))
+        self.assertIsNone(solver.get_info(None))
+        self.assertIsNone(solver.set_info(None, None))
+        self.assertIsNone(solver.exit())
 
     def test_all_parsing(self):
         # Create a small file that tests all commands of smt-lib 2

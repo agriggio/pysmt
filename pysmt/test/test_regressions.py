@@ -20,7 +20,7 @@ from six.moves import cStringIO
 
 import pysmt.logics as logics
 import pysmt.smtlib.commands as smtcmd
-from pysmt.shortcuts import (Real, Plus, Symbol, Equals, And, Bool, Or,
+from pysmt.shortcuts import (Real, Plus, Symbol, Equals, And, Bool, Or, Not,
                              Div, LT, LE, Int, ToReal, Iff, Exists, Times, FALSE,
                              BVLShr, BVLShl, BVAShr, BV, BVAdd, BVULT, BVMul,
                              Select, Array)
@@ -29,12 +29,12 @@ from pysmt.typing import REAL, BOOL, INT, BVType, FunctionType, ArrayType
 from pysmt.test import (TestCase, skipIfSolverNotAvailable, skipIfNoSolverForLogic,
                         skipIfNoQEForLogic)
 from pysmt.test import main
-from pysmt.exceptions import ConvertExpressionError
+from pysmt.exceptions import ConvertExpressionError, PysmtValueError
 from pysmt.test.examples import get_example_formulae
 from pysmt.environment import Environment
 from pysmt.rewritings import cnf_as_set
 from pysmt.smtlib.parser import SmtLibParser
-from pysmt.smtlib.commands import DECLARE_FUN, DEFINE_FUN
+from pysmt.smtlib.commands import DECLARE_FUN
 from pysmt.smtlib.script import SmtLibCommand
 from pysmt.logics import get_closer_smtlib_logic
 from pysmt.constants import Fraction
@@ -61,7 +61,6 @@ class TestRegressions(TestCase):
         self.assertValid(Equals(p1, p2))
         self.assertValid(Equals(p1, p2), solver_name='z3')
         self.assertValid(Equals(p1, p2), solver_name='msat')
-
 
     def test_substitute_memoization(self):
         a = Symbol("A", BOOL)
@@ -191,7 +190,8 @@ class TestRegressions(TestCase):
             qelim(f)
         except ConvertExpressionError as ex:
             # The modulus operator must be there
-            self.assertIn("%2", str(ex.expression))
+            self.assertTrue("%2" in str(ex.expression) or \
+                            "int_mod_congr" in str(ex.expression))
 
     @skipIfSolverNotAvailable("msat")
     def test_msat_partial_model(self):
@@ -268,7 +268,7 @@ class TestRegressions(TestCase):
         self.assertEqual(new_f, Bool(False))
 
     def test_empty_string_symbol(self):
-        with self.assertRaises(ValueError):
+        with self.assertRaises(PysmtValueError):
             Symbol("")
 
     def test_smtlib_info_quoting(self):
@@ -412,7 +412,24 @@ class TestRegressions(TestCase):
     def test_array_initialization_printing(self):
         self.assertEqual(str(Array(INT, Int(0), {Int(1):Int(2)})), "Array{Int, Int}(0)[1 := 2]")
 
+    def test_git_version(self):
+        from pysmt import git_version
+        v = git_version()
+        self.assertIsNotNone(v)
+        parts = v.split("-")
+        self.assertTrue(len(parts) , 4)
 
+    @skipIfSolverNotAvailable("btor")
+    def test_boolector_assumptions(self):
+        with Solver(name='btor') as solver:
+            x = Symbol('x')
+            y = Symbol('y')
+            solver.add_assertion(Or(x, y))
+            solver.solve([Not(x), Not(y)])
+            btor_notx = solver.converter.convert(Not(x))
+            btor_noty = solver.converter.convert(Not(y))
+            self.assertEqual(solver.btor.Failed(btor_notx, btor_noty),
+                             [True, True])
 
 if __name__ == "__main__":
     main()

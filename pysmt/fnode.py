@@ -47,6 +47,7 @@ from pysmt.decorators import deprecated
 from pysmt.utils import twos_complement
 from pysmt.constants import (Fraction, is_python_integer,
                              is_python_rational, is_python_boolean)
+from pysmt.exceptions import PysmtValueError, PysmtModeError
 
 
 FNodeContent = collections.namedtuple("FNodeContent",
@@ -145,8 +146,8 @@ class FNode(object):
                     if not c.is_constant():
                         return False
                 if _type is not None or value is not None:
-                    raise ValueError("constant type and value checking is " \
-                                     "not available for array values")
+                    raise PysmtValueError("constant type and value checking " \
+                                          "is not available for array values")
                 return True
             return False
         if _type is not None:
@@ -587,18 +588,17 @@ class FNode(object):
               return m[index]
           except KeyError:
               return self.array_value_default()
-
         """
         assert index.is_constant()
         args = self.args()
         start = 0
         end = (len(args) - 1) // 2
-        while end - start > 0:
-            pivot = (end - start) // 2
+        while (end - start) > 0:
+            pivot = (end + start) // 2
             i = args[2 * pivot + 1]
             if id(i) == id(index):
                 return args[2 * pivot + 2]
-            elif id(i) < id(index):
+            elif id(i) > id(index):
                 end = pivot
             else:
                 start = pivot + 1
@@ -658,7 +658,7 @@ class FNode(object):
                 right = mgr.Real(right)
             return function(self, right)
         else:
-            raise Exception("Cannot use infix notation")
+            raise PysmtModeError("Cannot use infix notation")
 
     def Implies(self, right):
         return self._apply_infix(right, _mgr().Implies)
@@ -669,8 +669,14 @@ class FNode(object):
     def Equals(self, right):
         return self._apply_infix(right, _mgr().Equals)
 
-    def Ite(self, right):
-        return self._apply_infix(right, _mgr().Ite)
+    def Ite(self, then_, else_):
+        if _env().enable_infix_notation:
+            if isinstance(then_, FNode) and isinstance(else_, FNode):
+                return _mgr().Ite(self, then_, else_)
+            else:
+                raise PysmtModeError("Cannot infix ITE with implicit argument types.")
+        else:
+            raise PysmtModeError("Cannot use infix notation")
 
     def And(self, right):
         return self._apply_infix(right, _mgr().And)
@@ -802,29 +808,14 @@ class FNode(object):
 
     def __invert__(self):
         if not _env().enable_infix_notation:
-            raise Exception("Cannot use infix notation")
+            raise PysmtModeError("Cannot use infix notation")
         if _is_bv(self):
             return _mgr().BVNot(self)
         return _mgr().Not(self)
 
-    def __int__(self):
-        if self.is_int_constant():
-            return self.constant_value()
-        raise NotImplementedError("Cannot convert `%s` to integer" % str(self))
-
-    def __long__(self):
-        if self.is_int_constant():
-            return self.constant_value()
-        raise NotImplementedError("Cannot convert `%s` to integer" % str(self))
-
-    def __float__(self):
-        if self.is_int_constant() or self.is_real_constant():
-            return float(self.constant_value())
-        raise NotImplementedError("Cannot convert `%s` to float" % str(self))
-
     def __getitem__(self, idx):
         if not _env().enable_infix_notation:
-            raise Exception("Cannot use infix notation")
+            raise PysmtModeError("Cannot use infix notation")
         if isinstance(idx, slice):
             end = idx.stop
             start = idx.start

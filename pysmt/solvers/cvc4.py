@@ -15,6 +15,8 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
+from __future__ import absolute_import
+
 from six.moves import xrange
 
 from pysmt.exceptions import SolverAPINotFound
@@ -30,7 +32,8 @@ from pysmt.logics import PYSMT_LOGICS, ARRAYS_CONST_LOGICS
 from pysmt.solvers.solver import Solver, Converter, SolverOptions
 from pysmt.exceptions import (SolverReturnedUnknownResultError,
                               InternalSolverError,
-                              NonLinearError)
+                              NonLinearError, PysmtValueError,
+                              PysmtTypeError)
 from pysmt.walkers import DagWalker
 from pysmt.solvers.smtlib import SmtLibBasicSolver, SmtLibIgnoreMixin
 from pysmt.solvers.eager import EagerModel
@@ -45,14 +48,14 @@ class CVC4Options(SolverOptions):
         # TODO: CVC4 Supports UnsatCore extraction
         # but we did not wrapped it yet. (See #349)
         if self.unsat_cores_mode is not None:
-            raise ValueError("'unsat_cores_mode' option not supported.")
+            raise PysmtValueError("'unsat_cores_mode' option not supported.")
 
     @staticmethod
     def _set_option(cvc4, name, value):
         try:
             cvc4.setOption(name, CVC4.SExpr(value))
         except:
-            raise ValueError("Error setting the option '%s=%s'" % (name,value))
+            raise PysmtValueError("Error setting the option '%s=%s'" % (name,value))
 
     def __call__(self, solver):
         self._set_option(solver.cvc4,
@@ -100,8 +103,7 @@ class CVC4Solver(Solver, SmtLibBasicSolver, SmtLibIgnoreMixin):
         self.cvc4.setLogic(self.logic_name)
 
     def declare_variable(self, var):
-        self.converter.declare_variable(var)
-        return
+        raise NotImplementedError
 
     def add_assertion(self, formula, named=None):
         self._assert_is_boolean(formula)
@@ -199,7 +201,8 @@ class CVC4Converter(Converter, DagWalker):
 
     def declare_variable(self, var):
         if not var.is_symbol():
-            raise TypeError
+            raise PysmtTypeError("Trying to declare as a variable something "
+                                 "that is not a symbol: %s" % var)
         if var.symbol_name() not in self.declared_vars:
             cvc4_type = self._type_to_cvc4(var.symbol_type())
             decl = self.mkVar(var.symbol_name(), cvc4_type)
@@ -229,10 +232,10 @@ class CVC4Converter(Converter, DagWalker):
                 res = self.mgr.Array(array_type.index_type,
                                      base_value)
             else:
-                raise TypeError("Unsupported constant type:",
-                                expr.getType().toString())
+                raise PysmtTypeError("Unsupported constant type:",
+                                     expr.getType().toString())
         else:
-            raise TypeError("Unsupported expression:", expr.toString())
+            raise PysmtTypeError("Unsupported expression:", expr.toString())
 
         return res
 
@@ -378,10 +381,43 @@ class CVC4Converter(Converter, DagWalker):
         return self.mkExpr(CVC4.BITVECTOR_MULT, args[0], args[1])
 
     def walk_bv_udiv(self, formula, args, **kwargs):
-        return self.mkExpr(CVC4.BITVECTOR_UDIV, args[0], args[1])
+        # Force deterministic semantics of division by 0
+        # If the denominator is bv0, then the result is ~0
+        n,d = args
+        if d.isConst():
+            bv = d.getConstBitVector()
+            v = bv.getValue().toString()
+            if v == "0":
+                return self.mkExpr(CVC4.BITVECTOR_NOT, d)
+            else:
+                return self.mkExpr(CVC4.BITVECTOR_UDIV, n, d)
+        else:
+            # (d == 0) ? ~0 : n bvudiv d
+            base = self.mkExpr(CVC4.BITVECTOR_UDIV, n, d)
+            zero = self.mkConst(CVC4.BitVector(formula.bv_width(),
+                                               CVC4.Integer("0")))
+            notzero = self.mkExpr(CVC4.BITVECTOR_NOT, zero)
+            test = self.mkExpr(CVC4.EQUAL, d, zero)
+            return self.mkExpr(CVC4.ITE, test, notzero, base)
 
     def walk_bv_urem(self, formula, args, **kwargs):
-        return self.mkExpr(CVC4.BITVECTOR_UREM, args[0], args[1])
+        # Force deterministic semantics of reminder by 0
+        # If the denominator is bv0, then the result is the numerator
+        n,d = args
+        if d.isConst():
+            bv = d.getConstBitVector()
+            v = bv.getValue().toString()
+            if v == "0":
+                return n
+            else:
+                return self.mkExpr(CVC4.BITVECTOR_UREM, n, d)
+        else:
+            # (d == 0) ? n : n bvurem d
+            base = self.mkExpr(CVC4.BITVECTOR_UREM, n, d)
+            zero = self.mkConst(CVC4.BitVector(formula.bv_width(),
+                                               CVC4.Integer("0")))
+            test = self.mkExpr(CVC4.EQUAL, d, zero)
+            return self.mkExpr(CVC4.ITE, test, n, base)
 
     def walk_bv_lshl(self, formula, args, **kwargs):
         return self.mkExpr(CVC4.BITVECTOR_SHL, args[0], args[1])
@@ -415,10 +451,48 @@ class CVC4Converter(Converter, DagWalker):
         return self.mkExpr(CVC4.BITVECTOR_COMP, args[0], args[1])
 
     def walk_bv_sdiv (self, formula, args, **kwargs):
-        return self.mkExpr(CVC4.BITVECTOR_SDIV, args[0], args[1])
+        # Force deterministic semantics of division by 0
+        # If the denominator is bv0, then the result is:
+        #   * ~0 (if the numerator is signed >= 0)
+        #   * 1 (if the numerator is signed < 0)
+        n,d = args
+        # sign_expr : ( 0 s<= n ) ? ~0 : 1 )
+        zero = self.mkConst(CVC4.BitVector(formula.bv_width(),
+                                           CVC4.Integer("0")))
+        notzero = self.mkExpr(CVC4.BITVECTOR_NOT, zero)
+        one = self.mkConst(CVC4.BitVector(formula.bv_width(),
+                                          CVC4.Integer("1")))
+        is_gt_zero = self.mkExpr(CVC4.BITVECTOR_SLE, zero, n)
+        sign_expr = self.mkExpr(CVC4.ITE, is_gt_zero, notzero, one)
+        base = self.mkExpr(CVC4.BITVECTOR_SDIV, n, d)
+        if d.isConst():
+            v = d.getConstBitVector().getValue().toString()
+            if v == "0":
+                return sign_expr
+            else:
+                return base
+        else:
+            # (d == 0) ? sign_expr : base
+            is_zero = self.mkExpr(CVC4.EQUAL, d, zero)
+            return self.mkExpr(CVC4.ITE, is_zero, sign_expr, base)
 
     def walk_bv_srem (self, formula, args, **kwargs):
-        return self.mkExpr(CVC4.BITVECTOR_SREM, args[0], args[1])
+        # Force deterministic semantics of reminder by 0
+        # If the denominator is bv0, then the result is the numerator
+        n,d = args
+        if d.isConst():
+            v = d.getConstBitVector().getValue().toString()
+            if v == "0":
+                return n
+            else:
+                return self.mkExpr(CVC4.BITVECTOR_SREM, n, d)
+        else:
+            # (d == 0) ? n : n bvurem d
+            base = self.mkExpr(CVC4.BITVECTOR_SREM, n, d)
+            zero = self.mkConst(CVC4.BitVector(formula.bv_width(),
+                                               CVC4.Integer("0")))
+            test = self.mkExpr(CVC4.EQUAL, d, zero)
+            return self.mkExpr(CVC4.ITE, test, n, base)
 
     def walk_bv_ashr (self, formula, args, **kwargs):
         return self.mkExpr(CVC4.BITVECTOR_ASHR, args[0], args[1])
